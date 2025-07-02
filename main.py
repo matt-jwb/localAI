@@ -2,12 +2,13 @@ import os
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-
 class LLM:
     def __init__(self, model_location):
         self.model_path = self.get_latest_snapshot(model_location)
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_path)
         self.model = AutoModelForCausalLM.from_pretrained(self.model_path)
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model.to(self.device)
 
     def get_latest_snapshot(self, model_dir):
         for subdir in os.listdir(model_dir):
@@ -23,15 +24,12 @@ class LLM:
         return None
 
     def generate_response(self, prompt):
-        inputs = self.tokenizer.encode(prompt, return_tensors="pt")
-
+        inputs = self.tokenizer.encode(prompt, return_tensors="pt", truncation=True).to(self.device)
         attention_mask = torch.ones(inputs.shape, device=inputs.device)
-
         pad_token_id = self.tokenizer.eos_token_id
 
         with torch.no_grad():
-            outputs = self.model.generate(inputs, max_length=150, num_return_sequences=1, no_repeat_ngram_size=2,
-                                     attention_mask=attention_mask, pad_token_id=pad_token_id)
+            outputs = self.model.generate(inputs, max_length=150, num_return_sequences=1, no_repeat_ngram_size=2, attention_mask=attention_mask, pad_token_id=pad_token_id)
 
         return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
 
