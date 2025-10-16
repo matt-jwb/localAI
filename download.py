@@ -34,15 +34,19 @@ def try_login():
 def download():
     if not is_logged_in():
         try_login()
-    model = input("Input a model >>  ")
-    location = input("Input save location >>  ")
-    try:
-        location = get_path(location)
-    except Exception as e:
-        print(f"There was a problem with the location: {e}")
-    while model != "quit":
-        save_model(model, location)
+
+    while True:
         model = input("Input a model >> ")
-        location = input("Input save location >>  ")
+        if model.lower() == "quit":
+            break
+
+        location = input("Input save location >> ")
+        try:
+            location = get_path(location)
+        except Exception as e:
+            print(f"There was a problem with the location: {e}")
+            continue
+
+        save_model(model, location)
 
 download()
