@@ -6,7 +6,9 @@ class LLM:
     def __init__(self, model_location, sys_prompt):
         self.model_path = self.get_latest_snapshot(model_location)
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_path)
-        self.model = AutoModelForCausalLM.from_pretrained(self.model_path)
+        self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.model = AutoModelForCausalLM.from_pretrained(self.model_path, torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32)
+        self.model = torch.compile(self.model)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model.to(self.device)
         self.conversation_history = []
@@ -34,7 +36,7 @@ class LLM:
         pad_token_id = self.tokenizer.eos_token_id
 
         with torch.no_grad():
-            outputs = self.model.generate(inputs, max_length=512, num_return_sequences=1, no_repeat_ngram_size=2, attention_mask=attention_mask, pad_token_id=pad_token_id)
+            outputs = self.model.generate(inputs, max_new_tokens=100, num_return_sequences=1, no_repeat_ngram_size=2, attention_mask=attention_mask, pad_token_id=pad_token_id)
 
         response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
         response_text = response.split("AI:")[-1].strip()
