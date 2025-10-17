@@ -1,8 +1,7 @@
 import os
-from transformers import AutoTokenizer, AutoModelForCausalLM
-from huggingface_hub import login, whoami
+from transformers import AutoTokenizer
+from huggingface_hub import login, whoami, snapshot_download
 from huggingface_hub.utils import LocalTokenNotFoundError, HfHubHTTPError
-from auto_gptq import AutoGPTQForCausalLM
 
 
 def get_path(loc):
@@ -18,12 +17,8 @@ def save_model(model_name, cache_dir):
     try:
         print(f"Saving model: {model_name}")
         AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
-        if "gptq" in model_name.lower():
-            print("[SYSTEM] Detected GPTQ model. Downloading using AutoGPTQ.")
-            AutoGPTQForCausalLM.from_quantized(model_name, cache_dir=cache_dir, trust_remote_code=True, use_safetensors=True, device="cuda:0")
-        else:
-            AutoModelForCausalLM.from_pretrained(model_name, cache_dir=cache_dir)
-        print("Model saved successfully.")
+        model_path = snapshot_download(repo_id=model_name, cache_dir=cache_dir, local_dir=os.path.join(cache_dir, model_name.replace("/", "_")))
+        print(f"[SYSTEM] Model files downloaded to: {model_path}")
     except Exception as ex:
         print(f"There was a problem downloading the model: {ex}")
 
