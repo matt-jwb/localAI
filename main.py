@@ -1,16 +1,26 @@
 import os
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
+from auto_gptq import AutoGPTQForCausalLM
 
 class LLM:
     def __init__(self, model_location, sys_prompt):
         self.model_path = self.get_latest_snapshot(model_location)
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_path)
         self.tokenizer.pad_token = self.tokenizer.eos_token
-        self.model = AutoModelForCausalLM.from_pretrained(self.model_path, torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32)
-        self.model = torch.compile(self.model)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model.to(self.device)
+        self.is_gptq = is_gptq_model(self.model_path)
+
+        if self.is_gptq:
+            if not torch.cuda.is_available():
+                raise RuntimeError("[ERROR] No GPU found - cannot run GPTQ model")
+            print("[SYSTEM] Loading GPTQ quantized model...")
+            self.model = AutoGPTQForCausalLM.from_quantized(self.model_path, use_safetensors=True, device="cuda:0", use_triton=False, inject_fused_attention=False)
+        else:
+            print("[SYSTEM] Loading standard model...")
+            self.model = AutoModelForCausalLM.from_pretrained(self.model_path, torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32)
+            self.model = torch.compile(self.model)
+            self.model.to(self.device)
         self.conversation_history = []
         self.conversation_history.append(f"System: {sys_prompt}")
 
@@ -31,13 +41,14 @@ class LLM:
         self.conversation_history.append(f"User: {prompt}")
         full_prompt = "\n".join(self.conversation_history) + "\nAI:"
 
-        inputs = self.tokenizer.encode(full_prompt, return_tensors="pt", truncation=True, max_length=512).to(self.device)
-        attention_mask = torch.ones(inputs.shape, device=inputs.device)
-        pad_token_id = self.tokenizer.eos_token_id
-
+        inputs = self.tokenizer(full_prompt, return_tensors="pt", truncation=True, max_length=512, padding=True)
+        # Setting tensors to same device as model
+        inputs = {k: v.to(self.device) for k, v in inputs.items()}
         with torch.no_grad():
-            outputs = self.model.generate(inputs, max_new_tokens=100, num_return_sequences=1, no_repeat_ngram_size=2, attention_mask=attention_mask, pad_token_id=pad_token_id)
-
+            if self.is_gptq:
+                outputs = self.model.generate(input_ids=inputs["input_ids"], max_new_tokens=100, do_sample=True, pad_token_id=self.tokenizer.eos_token_id, eos_token_id=self.tokenizer.eos_token_id)
+            else:
+                outputs = self.model.generate(input_ids=inputs["input_ids"], attention_mask=inputs["attention_mask"], max_new_tokens=100, do_sample=True, no_repeat_ngram_size=2, pad_token_id=self.tokenizer.eos_token_id, eos_token_id=self.tokenizer.eos_token_id)
         response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
         response_text = response.split("AI:")[-1].strip()
 
@@ -54,6 +65,8 @@ def get_path(loc):
     else:
         raise Exception("Invalid Location")
 
+def is_gptq_model(model_path):
+    return "gptq" in model_path.lower() or os.path.exists(os.path.join(model_path, "quantize_config.json"))
 
 def main():
     location = input("Input model location >>  ")
