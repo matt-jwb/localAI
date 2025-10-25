@@ -33,6 +33,25 @@ class LLM:
         self.conversation_history = []
         self.conversation_history.append(f"System: {sys_prompt}")
 
+    def get_max_possible_tokens(self, model):
+        if hasattr(model.config, "max_position_embeddings"):
+            return model.config.max_position_embeddings
+        elif hasattr(model.config, "n_positions"):
+            return model.config.n_positions
+        elif hasattr(model.config, "max_sequence_length"):
+            return model.config.max_sequence_length
+        else:
+            return 1024
+
+    def trim_history_to_fit(self):
+        full_prompt = "\n".join(self.conversation_history)
+        tokens = self.tokenizer(full_prompt, return_tensors="pt")
+        while tokens.input_ids.size(1) > self.max_length:
+            # Pops the oldest message (apart from system prompt)
+            self.conversation_history.pop(1)
+            full_prompt = "\n".join(self.conversation_history)
+            tokens = self.tokenizer(full_prompt, return_tensors="pt")
+
     def generate_response(self, prompt):
         self.conversation_history.append(f"User: {prompt}")
         self.trim_history_to_fit()
