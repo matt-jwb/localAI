@@ -15,7 +15,7 @@ class LLM:
             if not torch.cuda.is_available():
                 raise RuntimeError("[ERROR] No GPU found - cannot run GPTQ model")
             print("[SYSTEM] Loading GPTQ quantized model...")
-            self.model = AutoGPTQForCausalLM.from_quantized(self.model_path, use_safetensors=True, device="cuda:0", use_triton=False, inject_fused_attention=False)
+            self.model = AutoGPTQForCausalLM.from_quantized(self.model_path, use_safetensors=True, device_map="auto", use_triton=False, inject_fused_attention=False)
         else:
             print("[SYSTEM] Loading standard model...")
             self.model = AutoModelForCausalLM.from_pretrained(self.model_path, torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32)
@@ -71,9 +71,9 @@ class LLM:
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
         with torch.no_grad():
             if self.is_gptq:
-                outputs = self.model.generate(input_ids=inputs["input_ids"], max_new_tokens=self.max_new_tokens, do_sample=True, pad_token_id=self.tokenizer.eos_token_id, eos_token_id=self.tokenizer.eos_token_id)
+                outputs = self.model.generate(input_ids=inputs["input_ids"], attention_mask=inputs.get("attention_mask"), max_new_tokens=self.max_new_tokens, do_sample=True, pad_token_id=self.tokenizer.eos_token_id, eos_token_id=self.tokenizer.eos_token_id)
             else:
-                outputs = self.model.generate(input_ids=inputs["input_ids"], attention_mask=inputs["attention_mask"], max_new_tokens=self.max_new_tokens, do_sample=True, no_repeat_ngram_size=2, pad_token_id=self.tokenizer.eos_token_id, eos_token_id=self.tokenizer.eos_token_id)
+                outputs = self.model.generate(input_ids=inputs["input_ids"], attention_mask=inputs.get("attention_mask"), max_new_tokens=self.max_new_tokens, do_sample=True, no_repeat_ngram_size=2, pad_token_id=self.tokenizer.eos_token_id, eos_token_id=self.tokenizer.eos_token_id)
         response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
         response_text = response.split("AI:")[-1].strip()
 
